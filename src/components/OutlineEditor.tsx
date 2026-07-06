@@ -211,7 +211,8 @@ export function OutlineEditor({ rootId }: OutlineEditorProps) {
     exposeHotkeyManagerForDev();
   }, []);
 
-  const routeSearch = useSearch({ strict: false }) as { q?: string };
+  const routeSearch = useSearch({ strict: false }) as { q?: string; focus?: string };
+  const focusLast = routeSearch.focus === "last";
 
   // Seam G (ADR 0001): the composed per-node visibility predicate. The core no
   // longer hardcodes `completed` -- it hides whatever the plugin view transforms
@@ -265,6 +266,7 @@ export function OutlineEditor({ rootId }: OutlineEditorProps) {
     navigate,
     pendingFocus,
     pendingFlash,
+    focusLast,
   });
 
   // Delegated tag-chip interaction. Chips live inside contentEditable text, so a
@@ -917,6 +919,10 @@ interface ZoomNavigationArgs {
   // windowed list (the row claims pendingFocus/pendingFlash on its mount).
   pendingFocus: RefObject<string | null>;
   pendingFlash: RefObject<string | null>;
+  /** When true, land focus on the LAST visible child on mount (used by /today
+   *  via ?focus=last so a journal-style note opens ready to append). Only
+   *  applies on a fresh load (no pivotId). */
+  focusLast?: boolean;
 }
 
 /**
@@ -933,6 +939,7 @@ function useZoomNavigation({
   navigate,
   pendingFocus,
   pendingFlash,
+  focusLast,
 }: ZoomNavigationArgs): {
   navigateZoom: (toRootId: string | null, pivot: string) => void;
   pivotId: string | null;
@@ -1019,6 +1026,23 @@ function useZoomNavigation({
   // is written in OutlineNode's own passive effect, so only by now is the list
   // laid out at its real heights.
   useEffect(() => {
+    // Fresh load with ?focus=last (e.g. /today redirecting to a daily note):
+    // land on the last visible child so a journal-style note opens ready to
+    // append, not the title. No pivotId on a fresh page load.
+    if (!pivotId && focusLast && rootId) {
+      const children = childrenOf(getTreeIndex(), rootId).filter((n) => !isHidden(n));
+      const lastChild = children[children.length - 1];
+      if (!lastChild) return;
+      const el = refs.get(lastChild.id);
+      if (!el) {
+        if (scrollRowIntoView(lastChild.id)) pendingFocus.current = lastChild.id;
+        return;
+      }
+      el.focus({ preventScroll: true });
+      placeCaretAtEnd(el);
+      el.scrollIntoView({ block: "nearest" });
+      return;
+    }
     if (!pivotId) return;
     let targetId = pivotId;
     if (pivotId === rootId) {
