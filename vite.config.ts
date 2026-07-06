@@ -4,6 +4,8 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact, { reactCompilerPreset } from "@vitejs/plugin-react";
 import babel from "@rolldown/plugin-babel";
 
+const e2e = process.env.DOTFLOWY_E2E === "1";
+
 // SPA mode: no SSR. This sidesteps localStorage-on-server entirely,
 // which matters because TanStack DB's localStorage collection reads
 // globalThis.localStorage. With SPA mode there's no server render pass
@@ -17,9 +19,14 @@ export default defineConfig({
     // (`bun run dev:api` -> wrangler dev on :8787). This keeps Vite HMR for the
     // UI while the real /api/nodes path is served by the Worker against a local
     // D1. In production the same Worker serves both. See docs/adr/0008-sync-via-a-per-user-durable-object.md.
-    proxy: {
-      "/api": "http://localhost:8787",
-    },
+    proxy: e2e
+      ? undefined
+      : {
+          "/api": {
+            target: "http://localhost:8787",
+            ws: true,
+          },
+        },
   },
   plugins: [
     tanstackStart({

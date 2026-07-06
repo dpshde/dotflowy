@@ -22,7 +22,7 @@ export default defineConfig({
   // Boot the Vite dev server for the run; reuse one already running locally so
   // an open `bun run dev` makes the suite start instantly.
   webServer: {
-    command: `bun run dev --port ${PORT}`,
+    command: `DOTFLOWY_E2E=1 bun run dev --port ${PORT}`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

@@ -51,6 +51,9 @@ interface Env extends AuthEnv {
   DB: D1Database
   ASSETS: Fetcher
   USER_OUTLINE: DurableObjectNamespace<UserOutlineDO>
+  /** Local dev escape hatch: when truthy, /api/auth/get-session returns a fixed
+   *  session and /api/* routes use that same user without a Better Auth cookie. */
+  BYPASS_AUTH?: string
   /** The owner's Better Auth `user.id`. When set, that one account routes to
    *  the constant 'default' DO (where the pre-auth outline already lives), so
    *  the owner's existing data carries over with zero copy. Everyone else
@@ -108,6 +111,36 @@ const OWNER_DO_ID = 'default'
 function resolveUserId(sessionUserId: string, env: Env): string {
   if (env.OWNER_USER_ID && sessionUserId === env.OWNER_USER_ID) return OWNER_DO_ID
   return sessionUserId
+}
+
+function bypassAuthEnabled(env: Env): boolean {
+  const raw = env.BYPASS_AUTH?.trim().toLowerCase()
+  return !!raw && raw !== '0' && raw !== 'false' && raw !== 'off'
+}
+
+function bypassAuthSession(env: Env) {
+  if (!bypassAuthEnabled(env)) return null
+  const nowIso = new Date().toISOString()
+  const expiresAt = new Date(Date.now() + 86_400_000).toISOString()
+  const user = {
+    id: env.OWNER_USER_ID || 'local-bypass-user',
+    email: 'dev@dotflowy.local',
+    name: 'Local Dev',
+    emailVerified: true,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  }
+  return {
+    session: {
+      id: 'local-bypass-session',
+      userId: user.id,
+      token: 'local-bypass-token',
+      expiresAt,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    },
+    user,
+  }
 }
 
 /**
@@ -474,6 +507,10 @@ function handleApiRequest(
     // Better Auth owns everything under /api/auth/* (sign-up/in/out, session,
     // and — via the mcp plugin — the OAuth authorize/token/register endpoints).
     if (url.pathname.startsWith('/api/auth/')) {
+      if (url.pathname === '/api/auth/get-session') {
+        const bypass = bypassAuthSession(env)
+        if (bypass) return json(bypass)
+      }
       return yield* Effect.promise(() => auth.handler(request))
     }
 
@@ -536,9 +573,9 @@ function handleApiRequest(
     }
 
     // Identity = the validated session's stable user id. No session → 401.
-    const session = yield* Effect.promise(() =>
+    const session = bypassAuthSession(env) ?? (yield* Effect.promise(() =>
       auth.api.getSession({ headers: request.headers }),
-    )
+    ))
     if (!session) return json({ error: 'unauthorized' }, 401)
 
     const userId = resolveUserId(session.user.id, env)
