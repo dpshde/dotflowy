@@ -8,6 +8,14 @@ BETTER_AUTH_SECRET=replace-me
 # empty = signup closed. In prod: `wrangler secret put INVITE_CODES`.
 INVITE_CODES=dev-invite
 
+# LOCAL-DEV ONLY: skip the auth gate for easy testing. When set, the Worker
+# bypasses its session check (routing every /api request to a fixed dev DO) and
+# `bun run dev:all` mirrors the flag to the client (VITE_BYPASS_AUTH) so the
+# AuthGate renders straight into the editor — no sign-in. NEVER set in prod;
+# it's read only from this gitignored file by `wrangler dev`, so it fails closed
+# there. Comment out to exercise the real sign-in flow locally.
+BYPASS_AUTH=1
+
 # Optional: pin the OAuth issuer the MCP discovery metadata advertises (ADR
 # 0026). Needed to test the MCP OAuth flow against `wrangler dev` — without it
 # the dev proxy's custom-domain simulation makes the inferred origin the prod

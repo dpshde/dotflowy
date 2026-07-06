@@ -68,6 +68,12 @@ interface Env extends AuthEnv {
    *  it's an allowlist entry, not a permanent storage key; if the admin's
    *  email changes, update the var in wrangler.jsonc. */
   ADMIN_EMAILS?: string
+  /** LOCAL-DEV ONLY: when set (in the gitignored `.dev.vars`, loaded only by
+   *  `wrangler dev`), the cookie-session gate is skipped and every /api request
+   *  routes to a fixed `DEV_USER_ID` DO, so the app is usable without signing
+   *  in. Never set this in prod — secrets there come from `wrangler secret put`,
+   *  so an unset var (the default) fails closed to the real session check. */
+  BYPASS_AUTH?: string
 }
 
 /** A legacy D1 node row (booleans as 0/1). Only read during the one-time import
@@ -104,6 +110,11 @@ const KV_COLLECTIONS = new Set(['tag-colors', 'daily-index'])
  * belongs.
  */
 const OWNER_DO_ID = 'default'
+
+/** The DO the auth-bypass dev session routes to (see Env.BYPASS_AUTH). A fixed,
+ *  isolated name so local testing has a stable outline that never collides with
+ *  the owner's 'default' DO. */
+const DEV_USER_ID = 'dev-user'
 
 function resolveUserId(sessionUserId: string, env: Env): string {
   if (env.OWNER_USER_ID && sessionUserId === env.OWNER_USER_ID) return OWNER_DO_ID
@@ -536,12 +547,20 @@ function handleApiRequest(
     }
 
     // Identity = the validated session's stable user id. No session → 401.
-    const session = yield* Effect.promise(() =>
-      auth.api.getSession({ headers: request.headers }),
-    )
-    if (!session) return json({ error: 'unauthorized' }, 401)
-
-    const userId = resolveUserId(session.user.id, env)
+    // LOCAL-DEV: env.BYPASS_AUTH (only ever set in the gitignored .dev.vars,
+    // loaded by `wrangler dev`) short-circuits the session check and routes to
+    // a fixed dev DO, so the app is testable without signing in. Fail-closed:
+    // unset in prod, so the real check always runs there.
+    let userId: string
+    if (env.BYPASS_AUTH) {
+      userId = resolveUserId(DEV_USER_ID, env)
+    } else {
+      const session = yield* Effect.promise(() =>
+        auth.api.getSession({ headers: request.headers }),
+      )
+      if (!session) return json({ error: 'unauthorized' }, 401)
+      userId = resolveUserId(session.user.id, env)
+    }
 
     // Link title unfurl (ADR 0016): fetch a pasted URL's <title> server-side so
     // a bare-url link can upgrade its label. DO-independent, so it runs before

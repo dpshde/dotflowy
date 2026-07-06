@@ -97,7 +97,14 @@ function RootComponent() {
  * render nothing to avoid flashing the login screen at an authed user.
  */
 function AuthGate({ children }: Readonly<{ children: ReactNode }>) {
+  // LOCAL-DEV: `bun run dev:all` propagates .dev.vars' BYPASS_AUTH to the Vite
+  // process as VITE_BYPASS_AUTH, so the client renders the editor without a
+  // session while the Worker skips its own session gate. The var is never set
+  // in a production build, so this drops out there. useSession stays called
+  // unconditionally (rules of hooks); its result is just ignored under bypass.
+  const bypass = import.meta.env.VITE_BYPASS_AUTH === '1'
   const { data: session, isPending } = useSession()
+  if (bypass) return <>{children}</>
   if (isPending) return null
   if (!session) return <AuthScreen />
   return <>{children}</>

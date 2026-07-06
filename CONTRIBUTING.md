@@ -44,15 +44,32 @@ Dotflowy is a static SPA that talks to a Cloudflare Worker over `/api/*`, so the
 real local setup runs both: Vite for the UI and Wrangler for the Worker + the
 per-user Durable Object it routes to.
 
-### Fast loop (two terminals) — the default
+### Easy loop (one command) — the default
+
+```sh
+bun run dev:all   # wrangler dev (:8787) + vite dev (:3000) together, HMR intact
+```
+
+Open http://localhost:3000. This boots both servers with combined output and a
+shared lifecycle (`scripts/dev-all.ts`) — one Ctrl-C stops both. If `.dev.vars`
+sets `BYPASS_AUTH` (the example file ships `BYPASS_AUTH=1`), the auth gate is
+skipped end to end — the Worker routes every `/api` request to a fixed dev DO
+and the client renders straight into the editor, no sign-in. Comment out
+`BYPASS_AUTH` to exercise the real invite/sign-in flow. **`BYPASS_AUTH` is
+local-only** — it's read solely from the gitignored `.dev.vars` by `wrangler
+dev`, so it can't leak into a deploy.
+
+### Fast loop (two terminals)
 
 ```sh
 bun run dev:api   # terminal 1: wrangler dev (Worker + DO + local D1) on :8787
 bun run dev       # terminal 2: vite dev on :3000 (proxies /api -> :8787)
 ```
 
-Open http://localhost:3000. Vite gives you HMR; the Worker reloads on its own
-edits. This is the loop for almost all work.
+Same servers, split across terminals. `bun run dev` alone won't work — with no
+Worker on :8787 every `/api` call fails and the app hangs on a blank auth gate.
+The client-side bypass only kicks in via `dev:all` (which sets
+`VITE_BYPASS_AUTH`), so this loop always uses the real sign-in flow.
 
 ### Production-like loop (one server)
 
